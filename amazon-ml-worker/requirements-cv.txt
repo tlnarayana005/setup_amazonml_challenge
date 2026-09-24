@@ -1,0 +1,3 @@
+# CV/vision model dependencies - install only on CV workers
+timm>=0.9
+torchvision>=0.15

@@ -1,0 +1,7 @@
+# CV task configuration
+task: cv
+enable_ocr: false
+enable_cv: true
+enable_nlp: false
+enable_embeddings: true
+enable_baseline: false

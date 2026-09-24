@@ -1,0 +1,4 @@
+# OCR dependencies - install only on OCR workers
+pytesseract>=0.3.10
+# paddleocr>=2.6  # Uncomment if using PaddleOCR backend
+# paddlepaddle>=2.4  # Required by PaddleOCR

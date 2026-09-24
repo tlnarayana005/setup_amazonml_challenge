@@ -1,0 +1,99 @@
+# Amazon ML Worker - Environment
+# Python, data, model, and ML artifacts
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Data directories (contain large files)
+data/raw/*
+data/interim/*
+data/processed/*
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+
+# Feature directories
+features/ocr/*
+features/cv/*
+features/nlp/*
+features/embeddings/*
+!features/ocr/.gitkeep
+!features/cv/.gitkeep
+!features/nlp/.gitkeep
+!features/embeddings/.gitkeep
+
+# Output directories
+outputs/predictions/*
+outputs/metrics/*
+outputs/logs/*
+outputs/worker_results/*
+!outputs/predictions/.gitkeep
+!outputs/metrics/.gitkeep
+!outputs/logs/.gitkeep
+!outputs/worker_results/.gitkeep
+
+# Cache
+cache/*
+!cache/.gitkeep
+
+# Experiment results (keep structure, not data)
+experiments/*.csv
+!experiments/.gitkeep
+
+# Model checkpoints
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+checkpoints/
+
+# Large files
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment / secrets
+.env
+*.key
+*.pem
+*.secret
+
+# Logs
+*.log
+
+# Synthetic data outputs (regenerable)
+synthetic_data/images/
+synthetic_data/*.csv
+synthetic_data/*.parquet

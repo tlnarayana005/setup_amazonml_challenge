@@ -1,0 +1,68 @@
+# Amazon ML Worker — Default Configuration
+# These defaults are overridden by task YAML, worker YAML, CLI args, and env vars.
+
+worker_id: 0
+total_workers: 1
+task: etl
+subtask: ""
+
+# Paths
+input_path: data/raw
+output_path: outputs/worker_results
+cache_path: cache
+data_path: data
+features_path: features
+experiments_path: experiments
+
+# Reproducibility
+seed: 42
+
+# Module toggles — all off by default; task YAMLs enable what they need
+enable_ocr: false
+enable_cv: false
+enable_nlp: false
+enable_embeddings: false
+enable_baseline: false
+enable_lightweight_model: false
+enable_qlora_smoke_test: false
+
+# Resource limits — safe defaults
+max_rows: -1
+max_steps: -1
+max_runtime: -1
+batch_size: 32
+num_workers: 0
+
+# Schema — set on Day-1 after reading the problem statement
+id_column: id
+target_column: target
+group_column: ""
+text_column: text
+image_column: image
+metric: f1_macro
+
+# Split
+split_method: stratified
+val_fraction: 0.2
+
+# Model
+model_type: lightgbm
+model_params: {}
+
+# OCR
+ocr_backend: tesseract
+
+# Embeddings
+embedding_model: ""
+embedding_dim: 384
+
+# QLoRA smoke test
+qlora_model_name: "Qwen/Qwen2-0.5B"
+qlora_bits: 4
+qlora_max_steps: 5
+qlora_max_seq_len: 128
+
+# Runtime
+verbose: true
+dry_run: false
+resume: true

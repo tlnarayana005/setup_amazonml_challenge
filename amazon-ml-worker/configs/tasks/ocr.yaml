@@ -1,0 +1,7 @@
+# OCR task configuration
+task: ocr
+enable_ocr: true
+enable_cv: false
+enable_nlp: false
+enable_baseline: false
+ocr_backend: tesseract

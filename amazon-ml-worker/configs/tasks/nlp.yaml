@@ -1,0 +1,7 @@
+# NLP task configuration
+task: nlp
+enable_ocr: false
+enable_cv: false
+enable_nlp: true
+enable_embeddings: true
+enable_baseline: false

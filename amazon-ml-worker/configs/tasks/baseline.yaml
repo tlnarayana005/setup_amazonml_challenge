@@ -1,0 +1,7 @@
+# Baseline task configuration
+task: baseline
+enable_ocr: false
+enable_cv: false
+enable_nlp: false
+enable_baseline: true
+model_type: lightgbm

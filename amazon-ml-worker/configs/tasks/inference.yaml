@@ -1,0 +1,6 @@
+# Inference task configuration
+task: inference
+enable_ocr: false
+enable_cv: false
+enable_nlp: false
+enable_baseline: false

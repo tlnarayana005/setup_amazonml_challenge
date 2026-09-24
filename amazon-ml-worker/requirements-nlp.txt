@@ -1,0 +1,4 @@
+# NLP dependencies - install only on NLP workers
+transformers>=4.30
+tokenizers>=0.13
+sentencepiece>=0.1.99

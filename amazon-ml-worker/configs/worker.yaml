@@ -1,0 +1,7 @@
+# Worker-specific overrides (template)
+# Copy this file and edit per worker machine.
+# Example: set worker_id and task for this specific machine.
+
+# worker_id: 0
+# total_workers: 8
+# task: ocr

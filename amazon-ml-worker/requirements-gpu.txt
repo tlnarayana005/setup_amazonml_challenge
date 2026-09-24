@@ -1,0 +1,10 @@
+# GPU/heavy model dependencies - install only on GPU workers
+torch>=2.0
+transformers>=4.30
+accelerate>=0.20
+peft>=0.4
+bitsandbytes>=0.39
+datasets>=2.12
+trl>=0.4
+safetensors>=0.3
+sentencepiece>=0.1.99

@@ -1,0 +1,7 @@
+# Embeddings task configuration
+task: embeddings
+enable_ocr: false
+enable_cv: false
+enable_nlp: false
+enable_embeddings: true
+enable_baseline: false
