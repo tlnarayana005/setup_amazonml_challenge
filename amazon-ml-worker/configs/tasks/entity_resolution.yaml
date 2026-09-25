@@ -1,0 +1,24 @@
+# Entity Resolution task configuration
+task: entity_resolution
+enable_ocr: false
+enable_cv: false
+enable_nlp: true
+enable_baseline: true
+model_type: lightgbm
+
+# Schema
+id_column: entity_id
+target_column: label
+group_column: source1_entity_id
+metric: f0.5_macro
+
+# Split
+split_method: group
+val_fraction: 0.2
+
+# Paths
+dataset_dir: dataset
+output_dir: output
+
+# Entity Resolution specific
+er_threshold: 0.5

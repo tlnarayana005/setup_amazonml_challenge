@@ -75,6 +75,8 @@ def main():
             _run_baseline(config, out_dir, log)
         elif config.task == "inference":
             _run_inference(config, out_dir, log)
+        elif config.task == "entity_resolution":
+            _run_entity_resolution(config, out_dir, log)
         else:
             log.error("Unknown task: %s", config.task)
             sys.exit(1)
@@ -217,6 +219,20 @@ def _run_inference(config, out_dir, log):
     import pandas as pd
     pd.DataFrame(columns=["id", "prediction"]).to_parquet(out_dir / "output.parquet", index=False)
     _save_metrics(out_dir, {"status": "placeholder"})
+
+
+def _run_entity_resolution(config, out_dir, log):
+    from src.er.pipeline import run_entity_resolution
+    metrics = run_entity_resolution(
+        dataset_dir="dataset",
+        output_dir="output",
+        model_type=config.model_type,
+        model_params=config.model_params or {},
+        worker_id=config.worker_id,
+        total_workers=config.total_workers,
+        seed=config.seed,
+    )
+    _save_metrics(out_dir, metrics)
 
 
 def _save_metrics(out_dir, metrics):
