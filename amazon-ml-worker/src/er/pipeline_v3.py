@@ -164,7 +164,9 @@ def _block_name_country(
     s2_ids: np.ndarray,
     name_dict: Dict[str, str],
     country_dict: Dict[str, str],
-) -> Set[Tuple[str, str]]:
+    pairs: Set[Tuple[str, str]],
+    max_block_size: int = 50,
+) -> None:
     """Block on first word of normalized name + country."""
     index: Dict[str, List[str]] = {}
     for s2_id in s2_ids:
@@ -178,7 +180,10 @@ def _block_name_country(
                 index[key] = []
             index[key].append(s2_id)
 
-    pairs = set()
+    skipped_keys = 0
+    max_group = 0
+    start_len = len(pairs)
+
     for s1_id in s1_ids:
         name = name_dict.get(s1_id, "")
         if not name:
@@ -187,10 +192,17 @@ def _block_name_country(
         if parts and len(parts[0]) >= 2:
             key = f"{parts[0]}|{country_dict.get(s1_id, '')}"
             matches = index.get(key, [])
-            if len(matches) < 500:
+            group_size = len(matches)
+            if group_size > max_group:
+                max_group = group_size
+            if 0 < group_size < max_block_size:
                 for s2_id in matches:
                     pairs.add((s1_id, s2_id))
-    return pairs
+            elif group_size >= max_block_size:
+                skipped_keys += 1
+
+    log.info("[BLOCK] key_type=name_country unique_s2_keys=%d skipped_s1_lookups=%d max_group_size=%d new_pairs=%d", 
+             len(index), skipped_keys, max_group, len(pairs) - start_len)
 
 
 def _block_numeric_address(
@@ -198,49 +210,64 @@ def _block_numeric_address(
     s2_ids: np.ndarray,
     addr_dict: Dict[str, str],
     country_dict: Dict[str, str],
-) -> Set[Tuple[str, str]]:
+    pairs: Set[Tuple[str, str]],
+    max_block_size: int = 50,
+) -> None:
     """Block on numeric tokens in address + country."""
     index: Dict[str, List[str]] = {}
     for s2_id in s2_ids:
         addr = addr_dict.get(s2_id, "")
         nums = set(re.findall(r"\d+", addr)) if addr else set()
         if nums:
-            key = f"{'|'.join(sorted(list(nums)[:3]))}|{country_dict.get(s2_id, '')}"
+            sorted_nums = sorted(list(nums))[:3]
+            key = f"{'|'.join(sorted_nums)}|{country_dict.get(s2_id, '')}"
             if key not in index:
                 index[key] = []
             index[key].append(s2_id)
 
-    pairs = set()
+    skipped_keys = 0
+    max_group = 0
+    start_len = len(pairs)
+
     for s1_id in s1_ids:
         addr = addr_dict.get(s1_id, "")
         nums = set(re.findall(r"\d+", addr)) if addr else set()
         if nums:
-            key = f"{'|'.join(sorted(list(nums)[:3]))}|{country_dict.get(s1_id, '')}"
+            sorted_nums = sorted(list(nums))[:3]
+            key = f"{'|'.join(sorted_nums)}|{country_dict.get(s1_id, '')}"
             matches = index.get(key, [])
-            if len(matches) < 500:
+            group_size = len(matches)
+            if group_size > max_group:
+                max_group = group_size
+            if 0 < group_size < max_block_size:
                 for s2_id in matches:
                     pairs.add((s1_id, s2_id))
-    return pairs
+            elif group_size >= max_block_size:
+                skipped_keys += 1
+
+    log.info("[BLOCK] key_type=numeric_address unique_s2_keys=%d skipped_s1_lookups=%d max_group_size=%d new_pairs=%d", 
+             len(index), skipped_keys, max_group, len(pairs) - start_len)
 
 
 def _block_name_trigram(
     s1_ids: np.ndarray,
     s2_ids: np.ndarray,
     name_dict: Dict[str, str],
+    pairs: Set[Tuple[str, str]],
     top_k: int = 25,
-) -> Set[Tuple[str, str]]:
+) -> None:
     """Block using character 3-gram TF-IDF on business_name."""
     s1_names = [name_dict.get(eid, "") for eid in s1_ids]
     s2_names = [name_dict.get(eid, "") for eid in s2_ids]
 
     if not s1_names or not s2_names:
-        return set()
+        return
 
     valid_s1 = [(i, n) for i, n in enumerate(s1_names) if len(n) >= 2]
     valid_s2 = [(i, n) for i, n in enumerate(s2_names) if len(n) >= 2]
 
     if not valid_s1 or not valid_s2:
-        return set()
+        return
 
     s1_idx, s1_texts = zip(*valid_s1)
     s2_idx, s2_texts = zip(*valid_s2)
@@ -255,12 +282,12 @@ def _block_name_trigram(
         del mat_counts
         import gc; gc.collect()
     except ValueError:
-        return set()
+        return
 
     s1_mat = mat[:len(s1_texts)]
     s2_mat = mat[len(s1_texts):]
 
-    pairs = set()
+    start_len = len(pairs)
     chunk_size = 250  # Smaller chunks to prevent CPU/RAM spikes
     for start in range(0, s1_mat.shape[0], chunk_size):
         end = min(start + chunk_size, s1_mat.shape[0])
@@ -276,7 +303,8 @@ def _block_name_trigram(
             for j in top_indices:
                 if row[j] > 0.2:
                     pairs.add((s1_ids[s1_idx[global_i]], s2_ids[s2_idx[j]]))
-    return pairs
+    
+    log.info("[BLOCK] key_type=name_trigram_cosine new_pairs=%d", len(pairs) - start_len)
 
 
 def _block_two_word_prefix(
@@ -284,7 +312,9 @@ def _block_two_word_prefix(
     s2_ids: np.ndarray,
     name_dict: Dict[str, str],
     country_dict: Dict[str, str],
-) -> Set[Tuple[str, str]]:
+    pairs: Set[Tuple[str, str]],
+    max_block_size: int = 50,
+) -> None:
     """Block on the first two words of the name + country.
     Catches variations like 'Tata Consultancy' vs 'Tata Consultancy Services'.
     """
@@ -300,7 +330,10 @@ def _block_two_word_prefix(
                 index[key] = []
             index[key].append(s2_id)
 
-    pairs = set()
+    skipped_keys = 0
+    max_group = 0
+    start_len = len(pairs)
+
     for s1_id in s1_ids:
         name = name_dict.get(s1_id, "")
         if not name:
@@ -308,9 +341,18 @@ def _block_two_word_prefix(
         parts = name.split()
         if len(parts) >= 2:
             key = f"{parts[0]} {parts[1]}|{country_dict.get(s1_id, '')}"
-            for s2_id in index.get(key, []):
-                pairs.add((s1_id, s2_id))
-    return pairs
+            matches = index.get(key, [])
+            group_size = len(matches)
+            if group_size > max_group:
+                max_group = group_size
+            if 0 < group_size < max_block_size:
+                for s2_id in matches:
+                    pairs.add((s1_id, s2_id))
+            elif group_size >= max_block_size:
+                skipped_keys += 1
+
+    log.info("[BLOCK] key_type=two_word_prefix unique_s2_keys=%d skipped_s1_lookups=%d max_group_size=%d new_pairs=%d", 
+             len(index), skipped_keys, max_group, len(pairs) - start_len)
 
 
 def generate_candidates(
@@ -338,22 +380,18 @@ def generate_candidates(
         log.info("Blocking S1 vs %s...", src_name)
         s2_ids_arr = s2["entity_id"].astype(str).values
 
-        p1 = _block_name_country(s1_ids_arr, s2_ids_arr, name_dict, country_dict)
-        log.info("  name+country block: %d pairs", len(p1))
-        all_pairs.update(p1)
+        _block_name_country(s1_ids_arr, s2_ids_arr, name_dict, country_dict, all_pairs, max_block_size=50)
+        log.info("  after name+country block: %d total pairs", len(all_pairs))
 
-        p2 = _block_numeric_address(s1_ids_arr, s2_ids_arr, addr_dict, country_dict)
-        log.info("  numeric+address block: %d pairs", len(p2))
-        all_pairs.update(p2)
+        _block_numeric_address(s1_ids_arr, s2_ids_arr, addr_dict, country_dict, all_pairs, max_block_size=50)
+        log.info("  after numeric+address block: %d total pairs", len(all_pairs))
 
-        p3 = _block_name_trigram(s1_ids_arr, s2_ids_arr, name_dict, top_k=5)
-        log.info("  name trigram block: %d pairs", len(p3))
-        all_pairs.update(p3)
+        _block_name_trigram(s1_ids_arr, s2_ids_arr, name_dict, all_pairs, top_k=5)
+        log.info("  after name trigram block: %d total pairs", len(all_pairs))
 
         # Pass 4: two-word prefix + country
-        p4 = _block_two_word_prefix(s1_ids_arr, s2_ids_arr, name_dict, country_dict)
-        log.info("  two-word prefix block: %d pairs", len(p4))
-        all_pairs.update(p4)
+        _block_two_word_prefix(s1_ids_arr, s2_ids_arr, name_dict, country_dict, all_pairs, max_block_size=50)
+        log.info("  after two-word prefix block: %d total pairs", len(all_pairs))
         
         import gc; gc.collect()
 
