@@ -212,7 +212,7 @@ def _block_name_trigram(s1: pd.DataFrame, s2: pd.DataFrame, top_k: int = 10) -> 
     s2_idx, s2_texts = zip(*valid_s2)
 
     all_texts = list(s1_texts) + list(s2_texts)
-    tfidf = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 3), max_features=50000)
+    tfidf = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 3), max_features=100000)
     try:
         mat = tfidf.fit_transform(all_texts)
     except ValueError:
@@ -305,7 +305,7 @@ def generate_candidates(
         log.info("  numeric+address block: %d pairs", len(p2))
         all_pairs.update(p2)
 
-        p3 = _block_name_trigram(s1, s2, top_k=10)
+        p3 = _block_name_trigram(s1, s2, top_k=25)
         log.info("  name trigram block: %d pairs", len(p3))
         all_pairs.update(p3)
 
