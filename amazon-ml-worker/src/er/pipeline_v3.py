@@ -212,9 +212,12 @@ def _block_name_trigram(s1: pd.DataFrame, s2: pd.DataFrame, top_k: int = 10) -> 
     s2_idx, s2_texts = zip(*valid_s2)
 
     all_texts = list(s1_texts) + list(s2_texts)
-    tfidf = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 3), max_features=100000)
+    from sklearn.feature_extraction.text import HashingVectorizer, TfidfTransformer
+    hasher = HashingVectorizer(analyzer="char_wb", ngram_range=(3, 3), n_features=100000, norm=None, alternate_sign=False)
     try:
-        mat = tfidf.fit_transform(all_texts)
+        mat_counts = hasher.transform(all_texts)
+        tfidf = TfidfTransformer()
+        mat = tfidf.fit_transform(mat_counts)
     except ValueError:
         return set()
 
@@ -629,7 +632,7 @@ def build_pair_features(
     # ── TF-IDF cosine (batch, sparse matrix multiply) ─────────────────────
     log.info("  Computing TF-IDF cosine features (batch)...")
     feat_df = pd.DataFrame(feats)
-    tfidf_cos = _compute_tfidf_cosine_batch(candidates, entities)
+    tfidf_cos = _compute_tfidf_cosine_batch(candidates, name_dict)
     feat_df["name_tfidf_cosine"] = tfidf_cos
 
     log.info("Built %d features for %d candidates", len(feat_df.columns) - 2, len(feat_df))
@@ -638,13 +641,13 @@ def build_pair_features(
 
 def _compute_tfidf_cosine_batch(
     pairs_df: pd.DataFrame,
-    entities: Dict[str, Dict],
+    name_dict: Dict[str, str],
 ) -> np.ndarray:
     """Compute TF-IDF cosine — sparse matrix multiply, no per-pair loop."""
     all_ids = list(set(pairs_df["source1_entity_id"]) | set(pairs_df["source2_entity_id"]))
     id_to_idx = {eid: i for i, eid in enumerate(all_ids)}
 
-    texts = [entities.get(eid, {}).get("business_name_norm", "") for eid in all_ids]
+    texts = [name_dict.get(eid, "") for eid in all_ids]
 
     if not any(texts):
         return np.zeros(len(pairs_df))
