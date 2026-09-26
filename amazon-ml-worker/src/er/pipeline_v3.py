@@ -216,8 +216,10 @@ def _block_numeric_address(
         nums = set(re.findall(r"\d+", addr)) if addr else set()
         if nums:
             key = f"{'|'.join(sorted(list(nums)[:3]))}|{country_dict.get(s1_id, '')}"
-            for s2_id in index.get(key, []):
-                pairs.add((s1_id, s2_id))
+            matches = index.get(key, [])
+            if len(matches) < 500:
+                for s2_id in matches:
+                    pairs.add((s1_id, s2_id))
     return pairs
 
 
