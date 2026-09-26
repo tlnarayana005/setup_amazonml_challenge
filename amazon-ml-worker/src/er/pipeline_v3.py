@@ -449,13 +449,14 @@ def _length_ratio(a: str, b: str) -> float:
 
 def build_pair_features(
     candidates: pd.DataFrame,
-    entities: Dict[str, Dict],
+    name_dict: Dict[str, str],
+    addr_dict: Dict[str, str],
+    country_dict: Dict[str, str],
     worker_id: int = 0,
     total_workers: int = 1,
 ) -> pd.DataFrame:
     """
     Build feature matrix for candidate pairs — VECTORIZED.
-    ~10-50x faster than original iterrows approach.
     """
     if total_workers > 1:
         n = len(candidates)
@@ -466,8 +467,11 @@ def build_pair_features(
     n_pairs = len(candidates)
     log.info("Computing features for %d pairs...", n_pairs)
 
-    s1_ids = candidates["source1_entity_id"].values
-    s2_ids = candidates["source2_entity_id"].values
+    if n_pairs == 0:
+        return pd.DataFrame()
+
+    s1_ids = candidates["source1_entity_id"].astype(str).values
+    s2_ids = candidates["source2_entity_id"].astype(str).values
 
     # Pre-extract all fields into arrays for vectorized access
     name1_arr = np.empty(n_pairs, dtype=object)
@@ -478,14 +482,13 @@ def build_pair_features(
     ctry2_arr = np.empty(n_pairs, dtype=object)
 
     for i in range(n_pairs):
-        e1 = entities.get(s1_ids[i], {})
-        e2 = entities.get(s2_ids[i], {})
-        name1_arr[i] = e1.get("business_name_norm", "")
-        name2_arr[i] = e2.get("business_name_norm", "")
-        addr1_arr[i] = e1.get("business_address_norm", "")
-        addr2_arr[i] = e2.get("business_address_norm", "")
-        ctry1_arr[i] = e1.get("country_norm", "")
-        ctry2_arr[i] = e2.get("country_norm", "")
+        id1, id2 = s1_ids[i], s2_ids[i]
+        name1_arr[i] = name_dict.get(id1, "")
+        name2_arr[i] = name_dict.get(id2, "")
+        addr1_arr[i] = addr_dict.get(id1, "")
+        addr2_arr[i] = addr_dict.get(id2, "")
+        ctry1_arr[i] = country_dict.get(id1, "")
+        ctry2_arr[i] = country_dict.get(id2, "")
 
     # Compute all features in bulk
     feats = {
@@ -942,12 +945,20 @@ def run_entity_resolution(
         log.info("Normalization complete")
 
     # ── Entity Lookup (vectorized) ────────────────────────────────────────
-    entities: Dict[str, Dict] = {}
-    for name, df in {**train_sources, **test_sources}.items():
-        records = df.to_dict("records")
-        for rec in records:
-            entities[str(rec["entity_id"])] = rec
-    log.info("Entity lookup: %d entities", len(entities))
+    name_dict: Dict[str, str] = {}
+    addr_dict: Dict[str, str] = {}
+    country_dict: Dict[str, str] = {}
+
+    for df in list(train_sources.values()) + list(test_sources.values()):
+        ids = df["entity_id"].astype(str).values
+        names = df["business_name_norm"].fillna("").astype(str).values
+        addrs = df["business_address_norm"].fillna("").astype(str).values
+        countries = df["country_norm"].fillna("").astype(str).values
+        for i in range(len(ids)):
+            name_dict[ids[i]] = names[i]
+            addr_dict[ids[i]] = addrs[i]
+            country_dict[ids[i]] = countries[i]
+    log.info("Entity lookup: %d entities", len(name_dict))
 
     # ── Training: Blocking ────────────────────────────────────────────────
     with timer.section("train_blocking"):
@@ -960,7 +971,7 @@ def run_entity_resolution(
 
     # ── Training: Features ────────────────────────────────────────────────
     with timer.section("train_features"):
-        train_feat = build_pair_features(train_candidates, entities, worker_id, total_workers)
+        train_feat = build_pair_features(train_candidates, name_dict, addr_dict, country_dict, worker_id, total_workers)
 
     if len(train_feat) == 0:
         log.error("No training features!")
@@ -988,7 +999,7 @@ def run_entity_resolution(
 
     # ── Test: Features ────────────────────────────────────────────────────
     with timer.section("test_features"):
-        test_feat = build_pair_features(test_candidates, entities, worker_id, total_workers)
+        test_feat = build_pair_features(test_candidates, name_dict, addr_dict, country_dict, worker_id, total_workers)
 
     test_candidates.to_csv(Path(output_dir) / "candidate_pairs.tsv", sep="\t", index=False)
     log.info("Saved candidate_pairs.tsv: %d pairs", len(test_candidates))
