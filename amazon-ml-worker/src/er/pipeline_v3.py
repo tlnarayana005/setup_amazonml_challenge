@@ -124,80 +124,75 @@ def extract_alpha_tokens(text: str) -> Set[str]:
 # 3. Multi-Pass Blocking (vectorized index building)
 # ---------------------------------------------------------------------------
 
-def _block_name_country(s1: pd.DataFrame, s2: pd.DataFrame) -> Set[Tuple[str, str]]:
+def _block_name_country(
+    s1_ids: np.ndarray,
+    s2_ids: np.ndarray,
+    name_dict: Dict[str, str],
+    country_dict: Dict[str, str],
+) -> Set[Tuple[str, str]]:
     """Block on first word of normalized name + country."""
-    # Vectorized index building for s2
-    s2_names = s2["business_name_norm"].values
-    s2_countries = s2["country_norm"].values
-    s2_eids = s2["entity_id"].values
-
     index: Dict[str, List[str]] = {}
-    for idx in range(len(s2_names)):
-        name = s2_names[idx]
+    for s2_id in s2_ids:
+        name = name_dict.get(s2_id, "")
         if not name:
             continue
         parts = name.split()
         if parts and len(parts[0]) >= 2:
-            key = f"{parts[0]}|{s2_countries[idx]}"
+            key = f"{parts[0]}|{country_dict.get(s2_id, '')}"
             if key not in index:
                 index[key] = []
-            index[key].append(s2_eids[idx])
+            index[key].append(s2_id)
 
-    # Vectorized lookup for s1
     pairs = set()
-    s1_names = s1["business_name_norm"].values
-    s1_countries = s1["country_norm"].values
-    s1_eids = s1["entity_id"].values
-
-    for idx in range(len(s1_names)):
-        name = s1_names[idx]
+    for s1_id in s1_ids:
+        name = name_dict.get(s1_id, "")
         if not name:
             continue
         parts = name.split()
         if parts and len(parts[0]) >= 2:
-            key = f"{parts[0]}|{s1_countries[idx]}"
+            key = f"{parts[0]}|{country_dict.get(s1_id, '')}"
             for s2_id in index.get(key, []):
-                pairs.add((s1_eids[idx], s2_id))
+                pairs.add((s1_id, s2_id))
     return pairs
 
 
-def _block_numeric_address(s1: pd.DataFrame, s2: pd.DataFrame) -> Set[Tuple[str, str]]:
+def _block_numeric_address(
+    s1_ids: np.ndarray,
+    s2_ids: np.ndarray,
+    addr_dict: Dict[str, str],
+    country_dict: Dict[str, str],
+) -> Set[Tuple[str, str]]:
     """Block on numeric tokens in address + country."""
-    s2_addrs = s2["business_address_norm"].values
-    s2_countries = s2["country_norm"].values
-    s2_eids = s2["entity_id"].values
-
     index: Dict[str, List[str]] = {}
-    for idx in range(len(s2_addrs)):
-        addr = s2_addrs[idx]
+    for s2_id in s2_ids:
+        addr = addr_dict.get(s2_id, "")
         nums = set(re.findall(r"\d+", addr)) if addr else set()
         if nums:
-            key = f"{'|'.join(sorted(list(nums)[:3]))}|{s2_countries[idx]}"
+            key = f"{'|'.join(sorted(list(nums)[:3]))}|{country_dict.get(s2_id, '')}"
             if key not in index:
                 index[key] = []
-            index[key].append(s2_eids[idx])
+            index[key].append(s2_id)
 
     pairs = set()
-    s1_addrs = s1["business_address_norm"].values
-    s1_countries = s1["country_norm"].values
-    s1_eids = s1["entity_id"].values
-
-    for idx in range(len(s1_addrs)):
-        addr = s1_addrs[idx]
+    for s1_id in s1_ids:
+        addr = addr_dict.get(s1_id, "")
         nums = set(re.findall(r"\d+", addr)) if addr else set()
         if nums:
-            key = f"{'|'.join(sorted(list(nums)[:3]))}|{s1_countries[idx]}"
+            key = f"{'|'.join(sorted(list(nums)[:3]))}|{country_dict.get(s1_id, '')}"
             for s2_id in index.get(key, []):
-                pairs.add((s1_eids[idx], s2_id))
+                pairs.add((s1_id, s2_id))
     return pairs
 
 
-def _block_name_trigram(s1: pd.DataFrame, s2: pd.DataFrame, top_k: int = 10) -> Set[Tuple[str, str]]:
+def _block_name_trigram(
+    s1_ids: np.ndarray,
+    s2_ids: np.ndarray,
+    name_dict: Dict[str, str],
+    top_k: int = 25,
+) -> Set[Tuple[str, str]]:
     """Block using character 3-gram TF-IDF on business_name."""
-    s1_names = s1["business_name_norm"].fillna("").tolist()
-    s2_names = s2["business_name_norm"].fillna("").tolist()
-    s1_ids = s1["entity_id"].tolist()
-    s2_ids = s2["entity_id"].tolist()
+    s1_names = [name_dict.get(eid, "") for eid in s1_ids]
+    s2_names = [name_dict.get(eid, "") for eid in s2_ids]
 
     if not s1_names or not s2_names:
         return set()
@@ -218,6 +213,8 @@ def _block_name_trigram(s1: pd.DataFrame, s2: pd.DataFrame, top_k: int = 10) -> 
         mat_counts = hasher.transform(all_texts)
         tfidf = TfidfTransformer()
         mat = tfidf.fit_transform(mat_counts)
+        del mat_counts
+        import gc; gc.collect()
     except ValueError:
         return set()
 
@@ -243,47 +240,46 @@ def _block_name_trigram(s1: pd.DataFrame, s2: pd.DataFrame, top_k: int = 10) -> 
     return pairs
 
 
-def _block_two_word_prefix(s1: pd.DataFrame, s2: pd.DataFrame) -> Set[Tuple[str, str]]:
+def _block_two_word_prefix(
+    s1_ids: np.ndarray,
+    s2_ids: np.ndarray,
+    name_dict: Dict[str, str],
+    country_dict: Dict[str, str],
+) -> Set[Tuple[str, str]]:
     """Block on the first two words of the name + country.
     Catches variations like 'Tata Consultancy' vs 'Tata Consultancy Services'.
     """
-    s2_names = s2["business_name_norm"].values
-    s2_countries = s2["country_norm"].values
-    s2_eids = s2["entity_id"].values
-
     index: Dict[str, List[str]] = {}
-    for idx in range(len(s2_names)):
-        name = s2_names[idx]
+    for s2_id in s2_ids:
+        name = name_dict.get(s2_id, "")
         if not name:
             continue
         parts = name.split()
         if len(parts) >= 2:
-            # First two words
-            key = f"{parts[0]} {parts[1]}|{s2_countries[idx]}"
+            key = f"{parts[0]} {parts[1]}|{country_dict.get(s2_id, '')}"
             if key not in index:
                 index[key] = []
-            index[key].append(s2_eids[idx])
+            index[key].append(s2_id)
 
     pairs = set()
-    s1_names = s1["business_name_norm"].values
-    s1_countries = s1["country_norm"].values
-    s1_eids = s1["entity_id"].values
-
-    for idx in range(len(s1_names)):
-        name = s1_names[idx]
+    for s1_id in s1_ids:
+        name = name_dict.get(s1_id, "")
         if not name:
             continue
         parts = name.split()
         if len(parts) >= 2:
-            key = f"{parts[0]} {parts[1]}|{s1_countries[idx]}"
+            key = f"{parts[0]} {parts[1]}|{country_dict.get(s1_id, '')}"
             for s2_id in index.get(key, []):
-                pairs.add((s1_eids[idx], s2_id))
+                pairs.add((s1_id, s2_id))
     return pairs
 
 
 def generate_candidates(
     s1: pd.DataFrame,
     other_sources: Dict[str, pd.DataFrame],
+    name_dict: Dict[str, str],
+    addr_dict: Dict[str, str],
+    country_dict: Dict[str, str],
     worker_id: int = 0,
     total_workers: int = 1,
 ) -> pd.DataFrame:
@@ -294,28 +290,33 @@ def generate_candidates(
         worker_ids = [aid for aid in all_ids if hash(aid) % total_workers == worker_id]
         s1 = s1[s1["entity_id"].isin(worker_ids)].reset_index(drop=True)
         log.info("Worker %d/%d: processing %d S1 entities", worker_id, total_workers, len(s1))
+        
+    s1_ids_arr = s1["entity_id"].astype(str).values
 
     all_pairs: Set[Tuple[str, str]] = set()
 
     for src_name, s2 in other_sources.items():
         log.info("Blocking S1 vs %s...", src_name)
+        s2_ids_arr = s2["entity_id"].astype(str).values
 
-        p1 = _block_name_country(s1, s2)
+        p1 = _block_name_country(s1_ids_arr, s2_ids_arr, name_dict, country_dict)
         log.info("  name+country block: %d pairs", len(p1))
         all_pairs.update(p1)
 
-        p2 = _block_numeric_address(s1, s2)
+        p2 = _block_numeric_address(s1_ids_arr, s2_ids_arr, addr_dict, country_dict)
         log.info("  numeric+address block: %d pairs", len(p2))
         all_pairs.update(p2)
 
-        p3 = _block_name_trigram(s1, s2, top_k=25)
+        p3 = _block_name_trigram(s1_ids_arr, s2_ids_arr, name_dict, top_k=25)
         log.info("  name trigram block: %d pairs", len(p3))
         all_pairs.update(p3)
 
         # Pass 4: two-word prefix + country
-        p4 = _block_two_word_prefix(s1, s2)
+        p4 = _block_two_word_prefix(s1_ids_arr, s2_ids_arr, name_dict, country_dict)
         log.info("  two-word prefix block: %d pairs", len(p4))
         all_pairs.update(p4)
+        
+        import gc; gc.collect()
 
     log.info("Total candidate pairs (union): %d", len(all_pairs))
 
@@ -961,13 +962,18 @@ def run_entity_resolution(
             name_dict[ids[i]] = names[i]
             addr_dict[ids[i]] = addrs[i]
             country_dict[ids[i]] = countries[i]
+        
+        # RAM OPTIMIZATION: Drop heavy string columns from Pandas now that we have them in dicts
+        df.drop(columns=["business_name_norm", "business_address_norm", "country_norm", "business_name", "business_address", "country"], inplace=True, errors="ignore")
+        import gc; gc.collect()
+        
     log.info("Entity lookup: %d entities", len(name_dict))
 
     # ── Training: Blocking ────────────────────────────────────────────────
     with timer.section("train_blocking"):
         s1_train = train_sources["source1"]
         other_train = {k: v for k, v in train_sources.items() if k != "source1"}
-        train_candidates = generate_candidates(s1_train, other_train, worker_id, total_workers)
+        train_candidates = generate_candidates(s1_train, other_train, name_dict, addr_dict, country_dict, worker_id, total_workers)
         train_candidates.to_csv(Path(output_dir) / "train_candidate_pairs.tsv", sep="\t", index=False)
 
     blocking_metrics = compute_blocking_recall(train_candidates, ground_truth)
@@ -998,7 +1004,7 @@ def run_entity_resolution(
             log.error("No test source1")
             return {"error": "No test source1"}
         other_test = {k: v for k, v in test_sources.items() if k != "source1"}
-        test_candidates = generate_candidates(s1_test, other_test, worker_id, total_workers)
+        test_candidates = generate_candidates(s1_test, other_test, name_dict, addr_dict, country_dict, worker_id, total_workers)
 
     # ── Test: Features ────────────────────────────────────────────────────
     with timer.section("test_features"):
