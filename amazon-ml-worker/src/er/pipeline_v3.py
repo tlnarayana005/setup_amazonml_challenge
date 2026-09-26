@@ -82,6 +82,9 @@ _PUNCT_RE = re.compile(r"[^\w\s]")
 _SPACE_RE = re.compile(r"\s+")
 
 
+_FR_STOPWORDS = {"le", "la", "les", "l", "un", "une", "des", "de", "du", "d", "societe", "entreprise", "groupe", "et", "en", "pour", "par"}
+_FR_ABBREVS = {"rue": "st", "blvd": "blvd", "av": "ave", "avenue": "ave", "boulevard": "blvd", "chemin": "rd", "route": "rt", "place": "pl"}
+
 def normalize_field(text: str) -> str:
     """Normalize a text field."""
     if not isinstance(text, str) or not text.strip():
@@ -90,7 +93,12 @@ def normalize_field(text: str) -> str:
     text = text.lower().strip()
     text = _PUNCT_RE.sub(" ", text)
     text = _SPACE_RE.sub(" ", text).strip()
-    return text
+    
+    # Apply French optimizations
+    words = text.split()
+    words = [w for w in words if w not in _FR_STOPWORDS]
+    words = [_FR_ABBREVS.get(w, w) for w in words]
+    return " ".join(words)
 
 
 def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -100,6 +108,33 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[f"{col}_norm"] = df[col].fillna("").apply(normalize_field)
     return df
+
+
+def get_soundex(text: str) -> str:
+    """Basic Soundex algorithm."""
+    if not text:
+        return ""
+    text = text.upper()
+    soundex = text[0]
+    mapping = {"BFPV": "1", "CGJKQSXZ": "2", "DT": "3", "L": "4", "MN": "5", "R": "6", "AEIOUHWY": "."}
+    for char in text[1:]:
+        for key in mapping:
+            if char in key:
+                code = mapping[key]
+                if code != '.':
+                    if code != soundex[-1]:
+                        soundex += code
+                break
+    soundex = soundex.replace(".", "")
+    return soundex[:4].ljust(4, "0")
+
+def extract_zip(addr: str) -> str:
+    match = re.search(r'\b\d{5,6}\b', addr)
+    return match.group(0) if match else ""
+
+def extract_pobox(addr: str) -> str:
+    match = re.search(r'p\s*o\s*box\s*\d+', addr)
+    return match.group(0) if match else ""
 
 
 def extract_tokens(text: str) -> Set[str]:
@@ -208,7 +243,7 @@ def _block_name_trigram(
 
     all_texts = list(s1_texts) + list(s2_texts)
     from sklearn.feature_extraction.text import HashingVectorizer, TfidfTransformer
-    hasher = HashingVectorizer(analyzer="char_wb", ngram_range=(3, 3), n_features=100000, norm=None, alternate_sign=False)
+    hasher = HashingVectorizer(analyzer="char_wb", ngram_range=(3, 3), n_features=25000, norm=None, alternate_sign=False)
     try:
         mat_counts = hasher.transform(all_texts)
         tfidf = TfidfTransformer()
@@ -222,7 +257,7 @@ def _block_name_trigram(
     s2_mat = mat[len(s1_texts):]
 
     pairs = set()
-    chunk_size = 1000  # Larger chunks = fewer passes
+    chunk_size = 250  # Smaller chunks to prevent CPU/RAM spikes
     for start in range(0, s1_mat.shape[0], chunk_size):
         end = min(start + chunk_size, s1_mat.shape[0])
         sims = sk_cosine(s1_mat[start:end], s2_mat)
@@ -307,7 +342,7 @@ def generate_candidates(
         log.info("  numeric+address block: %d pairs", len(p2))
         all_pairs.update(p2)
 
-        p3 = _block_name_trigram(s1_ids_arr, s2_ids_arr, name_dict, top_k=25)
+        p3 = _block_name_trigram(s1_ids_arr, s2_ids_arr, name_dict, top_k=5)
         log.info("  name trigram block: %d pairs", len(p3))
         all_pairs.update(p3)
 
@@ -511,6 +546,7 @@ def build_pair_features(
     name_len2 = np.zeros(n_pairs, dtype=np.float32)
     name_first_word = np.zeros(n_pairs, dtype=np.float32)
     name_alpha_jacc = np.zeros(n_pairs, dtype=np.float32)
+    name_soundex_match = np.zeros(n_pairs, dtype=np.float32)
     # New 8
     name_sorted_edit = np.zeros(n_pairs, dtype=np.float32)
     name_stripped_edit = np.zeros(n_pairs, dtype=np.float32)
@@ -547,6 +583,10 @@ def build_pair_features(
         name_lcs[i] = _lcs_ratio(n1, n2)
         name_char_jacc[i] = _char_jaccard(n1, n2)
         name_word_diff[i] = abs(len(w1) - len(w2))
+        
+        # Phonetic feature
+        sx1, sx2 = get_soundex(n1), get_soundex(n2)
+        name_soundex_match[i] = 1.0 if sx1 and sx2 and sx1 == sx2 else 0.0
 
         if (i + 1) % 100000 == 0:
             log.info("    name features: %d / %d", i + 1, n_pairs)
@@ -565,6 +605,7 @@ def build_pair_features(
         "name_lcs_ratio": name_lcs,
         "name_char_jaccard": name_char_jacc,
         "name_word_count_diff": name_word_diff,
+        "name_soundex_match": name_soundex_match,
     })
 
     # ── Address features (original 6 + 3 new = 9) ─────────────────────────
@@ -575,6 +616,8 @@ def build_pair_features(
     addr_len_ratio = np.zeros(n_pairs, dtype=np.float32)
     addr_num_jacc = np.zeros(n_pairs, dtype=np.float32)
     addr_num_overlap = np.zeros(n_pairs, dtype=np.float32)
+    addr_zip_match = np.zeros(n_pairs, dtype=np.float32)
+    addr_pobox_match = np.zeros(n_pairs, dtype=np.float32)
     # New
     addr_contain_1in2 = np.zeros(n_pairs, dtype=np.float32)
     addr_lcs = np.zeros(n_pairs, dtype=np.float32)
@@ -590,6 +633,13 @@ def build_pair_features(
         nums2 = extract_numeric_tokens(a2)
         addr_num_jacc[i] = _jaccard(nums1, nums2)
         addr_num_overlap[i] = float(len(nums1 & nums2)) if nums1 or nums2 else 0.0
+        
+        z1, z2 = extract_zip(a1), extract_zip(a2)
+        addr_zip_match[i] = 1.0 if z1 and z2 and z1 == z2 else 0.0
+        
+        p1, p2 = extract_pobox(a1), extract_pobox(a2)
+        addr_pobox_match[i] = 1.0 if p1 and p2 and p1 == p2 else 0.0
+
         # New
         addr_contain_1in2[i] = _token_containment(a1, a2)
         addr_lcs[i] = _lcs_ratio(a1, a2)
@@ -602,6 +652,7 @@ def build_pair_features(
         "addr_exact": addr_exact, "addr_jaccard": addr_jaccard,
         "addr_edit_sim": addr_edit, "addr_len_ratio": addr_len_ratio,
         "addr_numeric_jaccard": addr_num_jacc, "addr_numeric_overlap": addr_num_overlap,
+        "addr_zip_match": addr_zip_match, "addr_pobox_match": addr_pobox_match,
         "addr_containment_1in2": addr_contain_1in2,
         "addr_lcs_ratio": addr_lcs, "addr_char_jaccard": addr_char_jacc,
     })
