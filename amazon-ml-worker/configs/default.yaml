@@ -27,7 +27,7 @@ enable_lightweight_model: false
 enable_qlora_smoke_test: false
 
 # Resource limits — safe defaults
-max_rows: -1
+max_rows: 1500000
 max_steps: -1
 max_runtime: -1
 batch_size: 32
