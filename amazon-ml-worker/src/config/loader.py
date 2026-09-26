@@ -35,6 +35,8 @@ class WorkerConfig:
     data_path: str = "data"
     features_path: str = "features"
     experiments_path: str = "experiments"
+    dataset_dir: str = "dataset"
+    output_dir: str = "output"
 
     # ── Seed / reproducibility ────────────────────────────────────────────
     seed: int = 42
@@ -212,6 +214,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--input-path", dest="input_path", type=str, default=None)
     p.add_argument("--output-path", dest="output_path", type=str, default=None)
     p.add_argument("--cache-path", dest="cache_path", type=str, default=None)
+    p.add_argument("--dataset-dir", dest="dataset_dir", type=str, default=None)
+    p.add_argument("--output-dir", dest="output_dir", type=str, default=None)
 
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--batch-size", dest="batch_size", type=int, default=None)

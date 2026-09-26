@@ -26,7 +26,7 @@ log = get_logger(__name__)
 # 1. Data Loading
 # ---------------------------------------------------------------------------
 
-def load_sources(dataset_dir: str, split: str = "train") -> Dict[str, pd.DataFrame]:
+def load_sources(dataset_dir: str, split: str = "train", max_rows: int = -1) -> Dict[str, pd.DataFrame]:
     """Load source TSV files for the given split (train or test)."""
     base = Path(dataset_dir) / split
     sources = {}
@@ -34,7 +34,8 @@ def load_sources(dataset_dir: str, split: str = "train") -> Dict[str, pd.DataFra
         fname = f"{split}_source{i}.tsv"
         path = base / fname
         if path.exists():
-            df = pd.read_csv(path, sep="\t", dtype=str)
+            nrows = max_rows if max_rows > 0 else None
+            df = pd.read_csv(path, sep="\t", dtype=str, nrows=nrows)
             df = df.fillna("")
             sources[f"source{i}"] = df
             log.info("Loaded %s: %d rows, columns=%s", fname, len(df), list(df.columns))
@@ -770,6 +771,7 @@ def run_entity_resolution(
     worker_id: int = 0,
     total_workers: int = 1,
     seed: int = 42,
+    max_rows: int = -1,
 ) -> Dict:
     """
     Run the full entity resolution pipeline.
@@ -784,8 +786,8 @@ def run_entity_resolution(
 
     # ── Load Data ──────────────────────────────────────────────────────────
     with timer.section("load"):
-        train_sources = load_sources(dataset_dir, "train")
-        test_sources = load_sources(dataset_dir, "test")
+        train_sources = load_sources(dataset_dir, "train", max_rows=max_rows)
+        test_sources = load_sources(dataset_dir, "test", max_rows=max_rows)
         ground_truth = load_ground_truth(dataset_dir)
 
     # ── Normalize ──────────────────────────────────────────────────────────

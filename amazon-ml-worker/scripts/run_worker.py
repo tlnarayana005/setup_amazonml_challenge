@@ -224,13 +224,14 @@ def _run_inference(config, out_dir, log):
 def _run_entity_resolution(config, out_dir, log):
     from src.er.pipeline import run_entity_resolution
     metrics = run_entity_resolution(
-        dataset_dir="dataset",
-        output_dir="output",
+        dataset_dir=config.dataset_dir,
+        output_dir=config.output_dir,
         model_type=config.model_type,
         model_params=config.model_params or {},
         worker_id=config.worker_id,
         total_workers=config.total_workers,
         seed=config.seed,
+        max_rows=config.max_rows,
     )
     _save_metrics(out_dir, metrics)
 
