@@ -186,8 +186,10 @@ def _block_name_country(
         parts = name.split()
         if parts and len(parts[0]) >= 2:
             key = f"{parts[0]}|{country_dict.get(s1_id, '')}"
-            for s2_id in index.get(key, []):
-                pairs.add((s1_id, s2_id))
+            matches = index.get(key, [])
+            if len(matches) < 500:
+                for s2_id in matches:
+                    pairs.add((s1_id, s2_id))
     return pairs
 
 

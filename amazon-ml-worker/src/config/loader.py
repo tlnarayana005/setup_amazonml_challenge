@@ -51,7 +51,7 @@ class WorkerConfig:
     enable_qlora_smoke_test: bool = False
 
     # ── Resource limits ───────────────────────────────────────────────────
-    max_rows: int = -1          # -1 = unlimited
+    max_rows: int = 1500000     # Hard limit to 1.5M rows to guarantee < 25GB RAM on Kaggle
     max_steps: int = -1
     max_runtime: int = -1       # seconds, -1 = unlimited
     batch_size: int = 32
